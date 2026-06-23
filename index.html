@@ -636,6 +636,7 @@ var investorProfile=(function(){try{return JSON.parse(localStorage.getItem(inves
 var gateSessionKey='vfcl_gate_session';
 var gateLocalAccountsKey='vfcl_gate_accounts_local';
 var gateHours=8; // keep access for 8 hours before requiring a new login
+var syncIntervalMs=120000; // refresh in background every 2 minutes so expanded notes stay readable longer
 
 // Existing Google Apps Script endpoint used for lead capture
 var scriptURL='https://script.google.com/macros/s/AKfycbwfbhYPRlPJ8RNxc7q6Or8dUyFBPJ8jVWjyYflE_L2sQyXcjER4S1RVVFYDJko6z8EX/exec';
@@ -1119,7 +1120,23 @@ function onAdminPick(){
   document.getElementById('adminMsg').textContent='';
 }
 
+function getOpenNoteKeys(){
+  var keys=[];
+  document.querySelectorAll('.cnote details[data-note-key][open]').forEach(function(d){
+    keys.push(d.getAttribute('data-note-key'));
+  });
+  return keys;
+}
+function restoreOpenNoteKeys(keys){
+  var openMap={};
+  (keys||[]).forEach(function(k){openMap[k]=true;});
+  document.querySelectorAll('.cnote details[data-note-key]').forEach(function(d){
+    if(openMap[d.getAttribute('data-note-key')]) d.setAttribute('open','open');
+  });
+}
+
 function draw(){
+  var openNoteKeys=getOpenNoteKeys();
   var data=currentData();
   var res=data.filter(function(l){
     var mq=!q||l.n.toLowerCase().indexOf(q)>-1||l.p.indexOf(q)>-1||l.w.toLowerCase().indexOf(q)>-1;
@@ -1154,14 +1171,15 @@ function draw(){
       var pts=l.v.map(function(p){return'<span class="pt '+p+'">'+p+'</span>';}).join('');
       var ph=l.p?'<div class="mr">'+PH+'<span class="ph">'+l.p+'</span></div>':'';
       var wb=l.w?'<div class="mr">'+WB+'<a href="https://'+l.w+'" target="_blank">'+l.w+'</a></div>':'';
-      var note=memberNotes[noteId(l.n,tab)]||'';
+      var noteKeyForLender=noteId(l.n,tab);
+      var note=memberNotes[noteKeyForLender]||'';
       var notePreview=previewNote(note,140);
       var noteHtml='';
       if(note){
         if(adminUnlocked){
-          noteHtml='<div class="cnote"><strong>Notes:</strong> '+esc(notePreview)+' <details><summary>View full details</summary><div class="note-full">'+esc(note)+'</div></details></div>';
+          noteHtml='<div class="cnote"><strong>Notes:</strong> '+esc(notePreview)+' <details data-note-key="'+esc(noteKeyForLender)+'"><summary>View full details</summary><div class="note-full">'+esc(note)+'</div></details></div>';
         }else{
-          noteHtml='<div class="cnote locked"><strong>Notes:</strong> '+esc(notePreview)+' <details><summary>View full details</summary><div class="note-full">'+esc(note)+'</div></details></div><div class="mini" style="margin-top:4px;color:#64748b">Admin login required to view notes.</div>';
+          noteHtml='<div class="cnote locked"><strong>Notes:</strong> '+esc(notePreview)+' <details data-note-key="'+esc(noteKeyForLender)+'"><summary>View full details</summary><div class="note-full">'+esc(note)+'</div></details></div><div class="mini" style="margin-top:4px;color:#64748b">Admin login required to view notes.</div>';
         }
       }
       html+='<div class="c"><div class="ct2"><div class="cn">'+l.n+'</div><div class="pts">'+pts+'</div></div>';
@@ -1173,6 +1191,7 @@ function draw(){
   });
   html+='<div class="ft"><div class="ft-name">Vancouver Finance Company Inc. · 2025–2026</div><a href="https://www.vancouverfinancecompany.com" target="_blank">www.vancouverfinancecompany.com</a><a href="mailto:vancouverfinancecompany@gmail.com">vancouverfinancecompany@gmail.com</a></div>';
   el.innerHTML=html;
+  restoreOpenNoteKeys(openNoteKeys);
 }
 
 // Tab clicks
@@ -1376,7 +1395,7 @@ function persistGateSession(lead){
   function startSyncLoop(){
     setSyncStatus('checking…');
     syncAll();
-    window.setInterval(syncAll,20000);
+    window.setInterval(syncAll,syncIntervalMs);
   }
   if(hasActiveGateSession()){
     unlockList();
